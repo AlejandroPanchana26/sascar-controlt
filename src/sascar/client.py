@@ -1,91 +1,59 @@
 from __future__ import annotations
 import json
 import logging
-import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
-import requests
+from zeep import Client as ZeepClient
+from zeep.helpers import serialize_object
 from src.config import SascarConfig
 
 log = logging.getLogger(__name__)
-
-_SOAP_URL = "https://sasintegra.sascar.com.br/SasIntegra/SasIntegraWSService"
-
-_ENVELOPE = """<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope
-    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-    xmlns:sas="http://sasintegra.sascar.com.br/">
-  <soapenv:Header/>
-  <soapenv:Body>
-    <sas:obterPacotePosicoesJSONComPlaca>
-      <usuario>{usuario}</usuario>
-      <senha>{senha}</senha>
-      <quantidade>{quantidade}</quantidade>
-    </sas:obterPacotePosicoesJSONComPlaca>
-  </soapenv:Body>
-</soapenv:Envelope>"""
 
 
 class SascarClient:
     def __init__(self, config: SascarConfig) -> None:
         self._cfg = config
-        self._session = requests.Session()
+        self._client: ZeepClient | None = None
+
+    def _get_client(self) -> ZeepClient:
+        if self._client is None:
+            log.info("Conectando al WSDL de Sascar: %s", self._cfg.wsdl_url)
+            self._client = ZeepClient(self._cfg.wsdl_url)
+            log.info("Conexion WSDL establecida.")
+        return self._client
 
     def get_position_packets(self) -> List[Dict[str, Any]]:
-        log.info("[%s] Consultando Sascar (cantidad=%d)...",
+        client = self._get_client()
+        log.info("[%s] Consultando obterPacotePosicoesJSONComPlaca (cantidad=%d)...",
                  self._cfg.username, self._cfg.cantidad_posiciones)
-
-        envelope = _ENVELOPE.format(
+        raw = client.service.obterPacotePosicoesJSONComPlaca(
             usuario=self._cfg.username,
             senha=self._cfg.password,
             quantidade=self._cfg.cantidad_posiciones,
         )
-
-        headers = {
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction":   '""',
-        }
-
-        try:
-            resp = self._session.post(
-                _SOAP_URL,
-                data=envelope.encode("utf-8"),
-                headers=headers,
-                timeout=60,
-            )
-            if resp.status_code != 200:
-                log.error("Sascar respondio %s: %s",
-                          resp.status_code, resp.text[:2000])
-                raise ConnectionError(f"Sascar error {resp.status_code}")
-        except requests.RequestException as exc:
-            raise ConnectionError(f"Error llamando a Sascar: {exc}") from exc
-
-        packets = self._parse_response(resp.text)
+        packets = self._parse_response(raw)
         log.info("[%s] Paquetes recibidos: %d", self._cfg.username, len(packets))
         return packets
 
-    def _parse_response(self, xml_text: str) -> List[Dict[str, Any]]:
-        log.debug("Respuesta XML de Sascar: %s", xml_text[:500])
-        try:
-            root = ET.fromstring(xml_text)
-        except ET.ParseError as exc:
-            log.error("Error parseando XML: %s", exc)
-            log.error("XML recibido: %s", xml_text[:1000])
+    def _parse_response(self, raw: Any) -> List[Dict[str, Any]]:
+        raw_list = serialize_object(raw)
+        if raw_list is None:
             return []
-
+        if isinstance(raw_list, str):
+            raw_list = [raw_list]
+        if not isinstance(raw_list, list):
+            return []
         packets = []
-        for elem in root.iter():
-            if elem.tag.endswith("return") and elem.text:
-                text = elem.text.strip()
-                if not text:
-                    continue
+        for item in raw_list:
+            if isinstance(item, dict):
+                item["eventos"] = self._normalize_events(item.get("eventos") or [])
+                packets.append(item)
+            elif isinstance(item, str) and item.strip():
                 try:
-                    data = json.loads(text)
-                    if isinstance(data, dict):
-                        data["eventos"] = self._normalize_events(
-                            data.get("eventos") or [])
-                        packets.append(data)
+                    data = json.loads(item)
+                    data["eventos"] = self._normalize_events(data.get("eventos") or [])
+                    packets.append(data)
                 except json.JSONDecodeError:
-                    log.warning("JSON invalido en <return>: %s", text[:200])
+                    log.warning("JSON invalido en respuesta, se omite.")
         return packets
 
     @staticmethod
