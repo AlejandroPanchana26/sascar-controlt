@@ -33,15 +33,18 @@ class SascarClient:
     def get_position_packets(self) -> List[Dict[str, Any]]:
         log.info("[%s] Consultando Sascar (cantidad=%d)...",
                  self._cfg.username, self._cfg.cantidad_posiciones)
+
         envelope = _ENVELOPE.format(
             usuario=self._cfg.username,
             senha=self._cfg.password,
             quantidade=self._cfg.cantidad_posiciones,
         )
+
         headers = {
             "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": "obterPacotePosicoesJSONComPlaca",
+            "SOAPAction":   '""',
         }
+
         try:
             resp = self._session.post(
                 _SOAP_URL,
@@ -49,7 +52,10 @@ class SascarClient:
                 headers=headers,
                 timeout=60,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                log.error("Sascar respondio %s: %s",
+                          resp.status_code, resp.text[:2000])
+                raise ConnectionError(f"Sascar error {resp.status_code}")
         except requests.RequestException as exc:
             raise ConnectionError(f"Error llamando a Sascar: {exc}") from exc
 
@@ -58,11 +64,14 @@ class SascarClient:
         return packets
 
     def _parse_response(self, xml_text: str) -> List[Dict[str, Any]]:
+        log.debug("Respuesta XML de Sascar: %s", xml_text[:500])
         try:
             root = ET.fromstring(xml_text)
         except ET.ParseError as exc:
             log.error("Error parseando XML: %s", exc)
+            log.error("XML recibido: %s", xml_text[:1000])
             return []
+
         packets = []
         for elem in root.iter():
             if elem.tag.endswith("return") and elem.text:
@@ -76,7 +85,7 @@ class SascarClient:
                             data.get("eventos") or [])
                         packets.append(data)
                 except json.JSONDecodeError:
-                    log.warning("JSON inválido en <return>, se omite.")
+                    log.warning("JSON invalido en <return>: %s", text[:200])
         return packets
 
     @staticmethod
