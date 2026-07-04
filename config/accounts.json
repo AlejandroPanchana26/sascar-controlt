@@ -1,0 +1,19 @@
+[
+  {
+    "account_id": "sascar_cuenta_01",
+    "enabled": true,
+    "description": "Sascar Michelin - Railway",
+    "sascar": {
+      "username": "TU_USUARIO_SASCAR",
+      "password": "TU_PASSWORD_SASCAR",
+      "wsdl_url": "https://sasintegra.sascar.com.br/SasIntegra/SasIntegraWSService?wsdl",
+      "cantidad_posiciones": 3000,
+      "sascar_utc_offset_hours": -3
+    },
+    "controlt": {
+      "base_url": "https://hub.controlt.com.co",
+      "username": "TU_USUARIO_CONTROLT",
+      "password": "TU_PASSWORD_CONTROLT"
+    }
+  }
+]
