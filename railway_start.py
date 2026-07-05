@@ -3,7 +3,7 @@ railway_start.py
 ================
 Punto de entrada para Railway.
 Lee credenciales desde variables de entorno, genera config/accounts.json
-y lanza el worker en modo continuo cada 300 segundos (5 minutos).
+y lanza el worker en modo continuo cada 60 segundos
 
 Variables de entorno requeridas en Railway:
   SASCAR_USERNAME_01  → Usuario de Sascar / Michelin
@@ -90,11 +90,11 @@ def main():
     for a in accounts:
         print(f"   - {a['account_id']} ({a['sascar']['username']})")
     print(f"   Zona horaria: UTC-3 (Sascar) → UTC-5 (Colombia)")
-    print(f"   Intervalo: cada 300 segundos (5 minutos)")
+    print(f"   Intervalo: cada 60 segundos (1 minutos)")
 
     print("\n🚀 Iniciando worker...\n")
     subprocess.run(
-        [sys.executable, "main.py", "--loop", "300"],
+        [sys.executable, "main.py", "--loop", "60"],
         check=True
     )
 
